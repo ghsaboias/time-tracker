@@ -1,0 +1,17 @@
+{
+    "manifest_version": 3,
+    "name": "ADHD Time Tracker",
+    "version": "1.0",
+    "description": "Tracks time spent on websites for ADHD management",
+    "permissions": [
+      "tabs",
+      "storage",
+      "activeTab"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "action": {
+      "default_popup": "popup.html"
+    }
+  }

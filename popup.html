@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ADHD Time Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <h1>Time Tracker</h1>
+    <select id="dateSelect">
+      <option value="today">Today</option>
+    </select>
+    <canvas id="timeChart" width="400" height="200"></canvas>
+    <ul id="siteList"></ul>
+    <button id="exportBtn">Export to CSV</button>
+    <script src="popup.js"></script>
+  </body>
+</html>
