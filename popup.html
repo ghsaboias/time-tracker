@@ -3,16 +3,42 @@
   <head>
     <title>ADHD Time Tracker</title>
     <link rel="stylesheet" href="styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
     <h1>Time Tracker</h1>
-    <select id="dateSelect">
-      <option value="today">Today</option>
-    </select>
-    <canvas id="timeChart" width="400" height="200"></canvas>
+
+    <div class="view-controls">
+      <select id="dateSelect">
+        <option value="today">Today</option>
+      </select>
+      <button id="exportBtn">Export to CSV</button>
+    </div>
+
+    <div class="search-container">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search websites..."
+        autocomplete="off"
+      />
+    </div>
+
     <ul id="siteList"></ul>
-    <button id="exportBtn">Export to CSV</button>
+
+    <button id="settingsToggle" class="settings-toggle">Settings</button>
+
+    <div id="settingsSection" class="settings-section hidden">
+      <h2>Settings</h2>
+      <div class="setting-item">
+        <label for="retentionDays">Keep data for (days):</label>
+        <input type="number" id="retentionDays" min="1" max="365" value="30" />
+      </div>
+      <div class="storage-info">
+        <span>Storage used: </span>
+        <span id="storageUsage">0%</span>
+      </div>
+    </div>
+
     <script src="popup.js"></script>
   </body>
 </html>

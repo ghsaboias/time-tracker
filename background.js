@@ -2,11 +2,63 @@ let activeTabId = null;
 let startTime = null;
 let timeData = {};
 
+// Constants for data retention
+let MAX_DAYS_TO_KEEP = 30; // Keep data for 30 days by default
+const STORAGE_QUOTA_BYTES = 5242880; // 5MB storage quota
+
 // Load existing data
-chrome.storage.local.get(["timeData"], (result) => {
+chrome.storage.local.get(["timeData", "retentionDays"], (result) => {
   timeData = result.timeData || {};
+  if (result.retentionDays) {
+    MAX_DAYS_TO_KEEP = result.retentionDays;
+  }
   console.log("Loaded timeData:", timeData);
+  cleanupOldData();
 });
+
+// Handle messages from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "updateRetentionDays") {
+    MAX_DAYS_TO_KEEP = message.days;
+    chrome.storage.local.set({ retentionDays: message.days }, () => {
+      cleanupOldData();
+      sendResponse();
+    });
+    return true; // Will respond asynchronously
+  }
+});
+
+// Cleanup old data
+function cleanupOldData() {
+  const now = new Date();
+  const cutoffDate = new Date(now.setDate(now.getDate() - MAX_DAYS_TO_KEEP));
+  const cutoffDateStr = cutoffDate.toISOString().split("T")[0];
+
+  let modified = false;
+  Object.keys(timeData).forEach((date) => {
+    if (date < cutoffDateStr) {
+      delete timeData[date];
+      modified = true;
+    }
+  });
+
+  if (modified) {
+    chrome.storage.local.set({ timeData }, () => {
+      console.log("Cleaned up old data");
+    });
+  }
+}
+
+// Check storage quota
+function checkStorageQuota() {
+  return new Promise((resolve) => {
+    chrome.storage.local.getBytesInUse(null, (bytesInUse) => {
+      const quotaPercentage = (bytesInUse / STORAGE_QUOTA_BYTES) * 100;
+      console.log(`Storage usage: ${quotaPercentage.toFixed(2)}%`);
+      resolve(quotaPercentage < 90); // Return true if under 90% usage
+    });
+  });
+}
 
 // Track active tab changes
 chrome.tabs.onActivated.addListener((activeInfo) => {
@@ -53,13 +105,20 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 });
 
 // Update time for the active tab
-function updateTime() {
+async function updateTime() {
   if (activeTabId && startTime) {
     const timeSpent = (Date.now() - startTime) / 1000; // Seconds
     if (timeSpent <= 0) {
       console.warn("Non-positive time spent, skipping update");
       startTime = Date.now();
       return;
+    }
+
+    // Check storage quota before updating
+    const hasSpace = await checkStorageQuota();
+    if (!hasSpace) {
+      console.warn("Storage quota nearly full, cleaning up old data");
+      cleanupOldData();
     }
 
     chrome.tabs.get(activeTabId, (tab) => {
@@ -78,9 +137,13 @@ function updateTime() {
 
         // Save to storage
         chrome.storage.local.set({ timeData }, () => {
-          console.log(
-            `Saved time for ${hostname}: ${timeSpent}s (Total: ${timeData[today][hostname]}s)`
-          );
+          if (chrome.runtime.lastError) {
+            console.error("Error saving data:", chrome.runtime.lastError);
+          } else {
+            console.log(
+              `Saved time for ${hostname}: ${timeSpent}s (Total: ${timeData[today][hostname]}s)`
+            );
+          }
         });
       } else {
         console.warn("No valid tab or URL");
@@ -93,5 +156,8 @@ function updateTime() {
   }
 }
 
-// Periodically save time (every 1 second for testing)
+// Periodically save time and check data retention (every 1 second)
 setInterval(updateTime, 1000);
+
+// Check and cleanup old data daily
+setInterval(cleanupOldData, 24 * 60 * 60 * 1000);
