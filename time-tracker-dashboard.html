@@ -442,20 +442,53 @@
                 const lines = csvText.trim().split('\n');
                 const headers = lines[0].toLowerCase();
 
-                // Detect format: new has "title" column
+                // Detect format by headers
+                const hasTypeColumn = headers.startsWith('type,url,title,start,end');
+                const isEventLog = headers.startsWith('url,title,start,end');
                 const hasTitle = headers.includes('title');
 
                 this.data = lines.slice(1).map(line => {
                     // Handle CSV with quoted fields (titles may contain commas)
                     const values = this.parseCSVLine(line);
 
-                    if (hasTitle) {
-                        // New format: Date,URL,Title,Time (seconds)
+                    if (hasTypeColumn) {
+                        // New format with media: Type,URL,Title,Start,End
+                        const start = parseInt(values[3]) || 0;
+                        const end = parseInt(values[4]) || 0;
+                        const duration = (end - start) / 1000;
+                        const date = new Date(start).toISOString().split('T')[0];
+                        return {
+                            date: date,
+                            site: values[1],
+                            title: values[2] || '',
+                            timeSeconds: duration,
+                            start: start,
+                            end: end,
+                            type: values[0] // "visit" or "media"
+                        };
+                    } else if (isEventLog) {
+                        // Event log format: URL,Title,Start,End (timestamps in ms)
+                        const start = parseInt(values[2]) || 0;
+                        const end = parseInt(values[3]) || 0;
+                        const duration = (end - start) / 1000;
+                        const date = new Date(start).toISOString().split('T')[0];
+                        return {
+                            date: date,
+                            site: values[0],
+                            title: values[1] || '',
+                            timeSeconds: duration,
+                            start: start,
+                            end: end,
+                            type: 'visit'
+                        };
+                    } else if (hasTitle) {
+                        // Legacy format: Date,URL,Title,Time (seconds)
                         return {
                             date: values[0],
                             site: values[1],
                             title: values[2] || '',
-                            timeSeconds: parseFloat(values[3]) || 0
+                            timeSeconds: parseFloat(values[3]) || 0,
+                            type: 'visit'
                         };
                     } else {
                         // Old format: Date,Site,Time (seconds)
@@ -463,7 +496,8 @@
                             date: values[0],
                             site: values[1],
                             title: '',
-                            timeSeconds: parseFloat(values[2]) || 0
+                            timeSeconds: parseFloat(values[2]) || 0,
+                            type: 'visit'
                         };
                     }
                 }).filter(row => row.date && row.site);

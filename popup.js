@@ -34,11 +34,18 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Get date string from timestamp
+  function getDateStr(timestamp) {
+    return new Date(timestamp).toISOString().split("T")[0];
+  }
+
   // Populate date selector with available dates
   function populateDateSelect() {
-    chrome.storage.local.get(["timeData"], (result) => {
-      const timeData = result.timeData || {};
-      const dates = Object.keys(timeData).sort().reverse();
+    chrome.storage.local.get(["visits", "mediaSessions"], (result) => {
+      const visits = result.visits || [];
+      const mediaSessions = result.mediaSessions || [];
+      const allDates = [...visits, ...mediaSessions].map(v => getDateStr(v.start));
+      const dates = [...new Set(allDates)].sort().reverse();
 
       // Clear existing options
       dateSelect.innerHTML = "";
@@ -65,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Filter and display sites based on search
   function filterSites(searchTerm) {
     const filteredSites = searchTerm
-      ? currentSites.filter(([url, time, title]) =>
+      ? currentSites.filter(([url, time, title, isMedia]) =>
           url.toLowerCase().includes(searchTerm.toLowerCase()) ||
           title.toLowerCase().includes(searchTerm.toLowerCase())
         )
@@ -86,7 +93,8 @@ document.addEventListener("DOMContentLoaded", () => {
         : "No data for this date";
       siteList.appendChild(emptyMessage);
     } else {
-      sites.forEach(([url, time, title]) => {
+      // [url, time, title, isMedia]
+      sites.forEach(([url, time, title, isMedia]) => {
         const li = document.createElement("li");
         const minutes = Math.floor(time / 60);
         const seconds = Math.round(time % 60);
@@ -95,8 +103,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Show title if available, otherwise show URL
         const displayText = title || url;
+        const mediaIcon = isMedia ? "▶ " : "";
         li.innerHTML = `
-          <span class="site-name" title="${url}">${displayText}</span>
+          <span class="site-name" title="${url}">${mediaIcon}${displayText}</span>
           <span class="time-spent">${timeText}</span>
         `;
         siteList.appendChild(li);
@@ -106,19 +115,45 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load data and populate UI
   function loadData() {
-    chrome.storage.local.get(["timeData"], (result) => {
-      const timeData = result.timeData || {};
+    chrome.storage.local.get(["visits", "mediaSessions"], (result) => {
+      const visits = result.visits || [];
+      const mediaSessions = result.mediaSessions || [];
       const selectedDate = dateSelect.value;
-      const data = timeData[selectedDate] || {};
 
-      // Store current sites and sort them, handling both old (number) and new ({time, title}) formats
-      currentSites = Object.entries(data)
-        .map(([url, value]) => {
-          if (typeof value === "number") {
-            return [url, value, ""]; // [url, time, title]
-          }
-          return [url, value.time, value.title || ""];
-        })
+      // Filter visits for selected date
+      const dayVisits = visits.filter(v => getDateStr(v.start) === selectedDate);
+      const dayMedia = mediaSessions.filter(m => getDateStr(m.start) === selectedDate);
+
+      // Aggregate visits by URL
+      const aggregated = {};
+      dayVisits.forEach(v => {
+        const duration = (v.end - v.start) / 1000;
+        if (!aggregated[v.url]) {
+          aggregated[v.url] = { time: 0, title: v.title, isMedia: false };
+        }
+        aggregated[v.url].time += duration;
+        if (v.title) aggregated[v.url].title = v.title;
+      });
+
+      // Aggregate media by URL (separate from visits)
+      const mediaAggregated = {};
+      dayMedia.forEach(m => {
+        const duration = (m.end - m.start) / 1000;
+        const key = m.url + "_media";
+        if (!mediaAggregated[key]) {
+          mediaAggregated[key] = { time: 0, title: m.title, isMedia: true, url: m.url };
+        }
+        mediaAggregated[key].time += duration;
+        if (m.title) mediaAggregated[key].title = m.title;
+      });
+
+      // Convert to array format: [url, time, title, isMedia]
+      const visitSites = Object.entries(aggregated)
+        .map(([url, data]) => [url, data.time, data.title, false]);
+      const mediaSites = Object.values(mediaAggregated)
+        .map(data => [data.url, data.time, data.title, true]);
+
+      currentSites = [...visitSites, ...mediaSites]
         .sort((a, b) => b[1] - a[1]);
 
       // Apply current search filter
@@ -126,22 +161,28 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Export to CSV with date range selection
+  // Export to CSV with timestamps
   exportBtn.addEventListener("click", () => {
-    chrome.storage.local.get(["timeData"], (result) => {
-      const timeData = result.timeData || {};
-      let csv = "Date,URL,Title,Time (seconds)\n";
-      for (const [date, sites] of Object.entries(timeData)) {
-        for (const [url, value] of Object.entries(sites)) {
-          // Handle both old (number) and new ({time, title}) formats
-          const time = typeof value === "number" ? value : value.time;
-          const title = typeof value === "number" ? "" : (value.title || "");
-          // Escape quotes in title and URL for CSV
-          const escapedUrl = url.includes(",") ? `"${url.replace(/"/g, '""')}"` : url;
-          const escapedTitle = title.includes(",") || title.includes('"') ? `"${title.replace(/"/g, '""')}"` : title;
-          csv += `${date},${escapedUrl},${escapedTitle},${Math.round(time)}\n`;
-        }
+    chrome.storage.local.get(["visits", "mediaSessions"], (result) => {
+      const visits = result.visits || [];
+      const mediaSessions = result.mediaSessions || [];
+      let csv = "Type,URL,Title,Start,End\n";
+
+      // Combine and sort by start time
+      const allEvents = [
+        ...visits.map(v => ({ ...v, type: "visit" })),
+        ...mediaSessions.map(m => ({ ...m, type: "media" }))
+      ].sort((a, b) => a.start - b.start);
+
+      for (const event of allEvents) {
+        // Escape quotes in title and URL for CSV
+        const escapedUrl = event.url.includes(",") || event.url.includes('"')
+          ? `"${event.url.replace(/"/g, '""')}"` : event.url;
+        const escapedTitle = event.title.includes(",") || event.title.includes('"')
+          ? `"${event.title.replace(/"/g, '""')}"` : event.title;
+        csv += `${event.type},${escapedUrl},${escapedTitle},${event.start},${event.end}\n`;
       }
+
       const blob = new Blob([csv], { type: "text/csv" });
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
