@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Tracker Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .controls h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .file-input-area {
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-input-area:hover {
+            border-color: #2980b9;
+            background: #f8f9fa;
+        }
+
+        .file-input-area.dragover {
+            border-color: #27ae60;
+            background: #e8f5e8;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .filter-controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-group label {
+            font-weight: 500;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        select, input[type="date"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .category-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .category-btn {
+            padding: 6px 12px;
+            border: 2px solid #3498db;
+            background: white;
+            color: #3498db;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+        }
+
+        .category-btn.active {
+            background: #3498db;
+            color: white;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            color: #3498db;
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+
+        .stat-card p {
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .chart-container h3 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+
+        .chart-full-width {
+            grid-column: 1 / -1;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+        }
+
+        .chart-wrapper.small {
+            height: 300px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #7f8c8d;
+            padding: 40px;
+        }
+
+        .no-data {
+            display: none;
+            text-align: center;
+            color: #7f8c8d;
+            padding: 40px;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .category-filters {
+                justify-content: center;
+            }
+        }
+
+        .heatmap-container {
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .heatmap {
+            min-width: 800px;
+            height: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Time Tracker Dashboard</h1>
+            <p>Visualize your digital habits and time spent across websites</p>
+        </div>
+
+        <div class="controls">
+            <h3>📁 Load Your Data</h3>
+            <div class="file-input-area" onclick="document.getElementById('csvFile').click()">
+                <p>🔄 Click here or drag & drop your CSV file</p>
+                <small>Supports time_tracker_*.csv files from your extension</small>
+            </div>
+            <input type="file" id="csvFile" class="file-input" accept=".csv" />
+
+            <div class="filter-controls">
+                <div class="filter-group">
+                    <label>Date Range:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="date" id="startDate">
+                        <input type="date" id="endDate">
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>Time Format:</label>
+                    <select id="timeFormat">
+                        <option value="minutes">Minutes</option>
+                        <option value="hours">Hours</option>
+                        <option value="seconds">Seconds</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="category-filters">
+                <div class="category-btn active" data-category="all">All Categories</div>
+                <div class="category-btn" data-category="social">Social Media</div>
+                <div class="category-btn" data-category="development">Development</div>
+                <div class="category-btn" data-category="trading">Trading</div>
+                <div class="category-btn" data-category="ai">AI Tools</div>
+                <div class="category-btn" data-category="news">News</div>
+                <div class="category-btn" data-category="cloudflare">Cloudflare</div>
+                <div class="category-btn" data-category="other">Other</div>
+            </div>
+        </div>
+
+        <div class="loading">
+            <h3>📈 Processing your data...</h3>
+        </div>
+
+        <div class="no-data">
+            <h3>📋 No data loaded</h3>
+            <p>Please upload your CSV file to see visualizations</p>
+        </div>
+
+        <div id="dashboard" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3 id="totalSites">0</h3>
+                    <p>Total Sites</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="totalTime">0h</h3>
+                    <p>Total Time</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="avgDaily">0h</h3>
+                    <p>Daily Average</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="topSite">-</h3>
+                    <p>Most Used Site</p>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>🏆 Top Sites by Time</h3>
+                    <div class="chart-wrapper small">
+                        <canvas id="topSitesChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>📊 Category Breakdown</h3>
+                    <div class="chart-wrapper small">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container chart-full-width">
+                    <h3>📈 Daily Activity Timeline</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container chart-full-width">
+                    <h3>🔥 Activity Heatmap</h3>
+                    <div class="heatmap-container">
+                        <div class="chart-wrapper">
+                            <canvas id="heatmapChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-container chart-full-width">
+                    <h3>📊 Top Sites Over Time</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="sitesOverTimeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class TimeTrackerDashboard {
+            constructor() {
+                this.data = [];
+                this.filteredData = [];
+                this.charts = {};
+                this.categories = {
+                    social: ['x.com', 'twitter.com', 'facebook.com', 'instagram.com', 'linkedin.com', 'discord.com'],
+                    development: ['localhost', 'github.com', 'stackoverflow.com', 'docs.', 'developer.', 'api.'],
+                    trading: ['tradingview.com', 'binance.com', 'etherscan.io', 'dexscreener.com'],
+                    ai: ['claude.ai', 'openai.com', 'anthropic.com', 'chatgpt.com', 'grok.com', 'perplexity.ai'],
+                    news: ['youtube.com', 'news.', 'bloomberg.com', 'reuters.com', 'cnn.com', 'bbc.com'],
+                    cloudflare: ['cloudflare.com']
+                };
+                this.activeCategory = 'all';
+                this.timeFormat = 'minutes';
+
+                this.initEventListeners();
+                this.showNoData();
+            }
+
+            initEventListeners() {
+                const fileInput = document.getElementById('csvFile');
+                const fileArea = document.querySelector('.file-input-area');
+
+                fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+
+                // Drag and drop
+                fileArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    fileArea.classList.add('dragover');
+                });
+
+                fileArea.addEventListener('dragleave', () => {
+                    fileArea.classList.remove('dragover');
+                });
+
+                fileArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    fileArea.classList.remove('dragover');
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        this.loadCSV(files[0]);
+                    }
+                });
+
+                // Category filters
+                document.querySelectorAll('.category-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+                        e.target.classList.add('active');
+                        this.activeCategory = e.target.dataset.category;
+                        this.filterAndUpdateCharts();
+                    });
+                });
+
+                // Date filters
+                document.getElementById('startDate').addEventListener('change', () => this.filterAndUpdateCharts());
+                document.getElementById('endDate').addEventListener('change', () => this.filterAndUpdateCharts());
+                document.getElementById('timeFormat').addEventListener('change', (e) => {
+                    this.timeFormat = e.target.value;
+                    this.filterAndUpdateCharts();
+                });
+            }
+
+            handleFileSelect(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    this.loadCSV(file);
+                }
+            }
+
+            loadCSV(file) {
+                this.showLoading();
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        this.parseCSV(e.target.result);
+                        this.setDateRange();
+                        this.filterAndUpdateCharts();
+                        this.showDashboard();
+                    } catch (error) {
+                        console.error('Error parsing CSV:', error);
+                        alert('Error parsing CSV file. Please check the format.');
+                        this.showNoData();
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            parseCSV(csvText) {
+                const lines = csvText.trim().split('\n');
+                const headers = lines[0].toLowerCase();
+
+                // Detect format: new has "title" column
+                const hasTitle = headers.includes('title');
+
+                this.data = lines.slice(1).map(line => {
+                    // Handle CSV with quoted fields (titles may contain commas)
+                    const values = this.parseCSVLine(line);
+
+                    if (hasTitle) {
+                        // New format: Date,URL,Title,Time (seconds)
+                        return {
+                            date: values[0],
+                            site: values[1],
+                            title: values[2] || '',
+                            timeSeconds: parseFloat(values[3]) || 0
+                        };
+                    } else {
+                        // Old format: Date,Site,Time (seconds)
+                        return {
+                            date: values[0],
+                            site: values[1],
+                            title: '',
+                            timeSeconds: parseFloat(values[2]) || 0
+                        };
+                    }
+                }).filter(row => row.date && row.site);
+            }
+
+            parseCSVLine(line) {
+                const values = [];
+                let current = '';
+                let inQuotes = false;
+
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    if (char === '"') {
+                        if (inQuotes && line[i + 1] === '"') {
+                            current += '"';
+                            i++;
+                        } else {
+                            inQuotes = !inQuotes;
+                        }
+                    } else if (char === ',' && !inQuotes) {
+                        values.push(current);
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                values.push(current);
+                return values;
+            }
+
+            setDateRange() {
+                if (this.data.length === 0) return;
+
+                const dates = this.data.map(d => d.date).sort();
+                const startDate = dates[0];
+                const endDate = dates[dates.length - 1];
+
+                document.getElementById('startDate').value = startDate;
+                document.getElementById('endDate').value = endDate;
+            }
+
+            categorizesite(site) {
+                for (const [category, keywords] of Object.entries(this.categories)) {
+                    if (keywords.some(keyword => site.includes(keyword))) {
+                        return category;
+                    }
+                }
+                return 'other';
+            }
+
+            formatTime(seconds) {
+                switch (this.timeFormat) {
+                    case 'hours':
+                        return (seconds / 3600).toFixed(1);
+                    case 'minutes':
+                        return (seconds / 60).toFixed(1);
+                    default:
+                        return seconds.toFixed(0);
+                }
+            }
+
+            getTimeUnit() {
+                switch (this.timeFormat) {
+                    case 'hours': return 'h';
+                    case 'minutes': return 'm';
+                    default: return 's';
+                }
+            }
+
+            filterAndUpdateCharts() {
+                if (this.data.length === 0) return;
+
+                let filtered = [...this.data];
+
+                // Date filter
+                const startDate = document.getElementById('startDate').value;
+                const endDate = document.getElementById('endDate').value;
+
+                if (startDate) {
+                    filtered = filtered.filter(d => d.date >= startDate);
+                }
+                if (endDate) {
+                    filtered = filtered.filter(d => d.date <= endDate);
+                }
+
+                // Category filter
+                if (this.activeCategory !== 'all') {
+                    filtered = filtered.filter(d => this.categorizesite(d.site) === this.activeCategory);
+                }
+
+                this.filteredData = filtered;
+                this.updateStats();
+                this.updateCharts();
+            }
+
+            updateStats() {
+                const totalSites = new Set(this.filteredData.map(d => d.site)).size;
+                const totalTime = this.filteredData.reduce((sum, d) => sum + d.timeSeconds, 0);
+                const dates = new Set(this.filteredData.map(d => d.date));
+                const avgDaily = dates.size > 0 ? totalTime / dates.size : 0;
+
+                const siteData = {};
+                this.filteredData.forEach(d => {
+                    if (!siteData[d.site]) {
+                        siteData[d.site] = { time: 0, title: '' };
+                    }
+                    siteData[d.site].time += d.timeSeconds;
+                    if (d.title && d.title.length > siteData[d.site].title.length) {
+                        siteData[d.site].title = d.title;
+                    }
+                });
+                const topSiteEntry = Object.entries(siteData).reduce((a, b) =>
+                    (a[1]?.time || 0) > (b[1]?.time || 0) ? a : b, ['', { time: 0, title: '' }]);
+                const topSiteDisplay = topSiteEntry[1].title
+                    ? (topSiteEntry[1].title.length > 25 ? topSiteEntry[1].title.slice(0, 25) + '...' : topSiteEntry[1].title)
+                    : topSiteEntry[0];
+
+                document.getElementById('totalSites').textContent = totalSites;
+                document.getElementById('totalTime').textContent = this.formatTime(totalTime) + this.getTimeUnit();
+                document.getElementById('avgDaily').textContent = this.formatTime(avgDaily) + this.getTimeUnit();
+                document.getElementById('topSite').textContent = topSiteDisplay || '-';
+                document.getElementById('topSite').title = topSiteEntry[0]; // Full URL in tooltip
+            }
+
+            updateCharts() {
+                this.createTopSitesChart();
+                this.createCategoryChart();
+                this.createTimelineChart();
+                this.createHeatmapChart();
+                this.createSitesOverTimeChart();
+            }
+
+            createTopSitesChart() {
+                const ctx = document.getElementById('topSitesChart').getContext('2d');
+
+                if (this.charts.topSites) {
+                    this.charts.topSites.destroy();
+                }
+
+                // Aggregate by site, keeping best title for each
+                const siteData = {};
+                this.filteredData.forEach(d => {
+                    if (!siteData[d.site]) {
+                        siteData[d.site] = { time: 0, title: '' };
+                    }
+                    siteData[d.site].time += d.timeSeconds;
+                    // Keep the longest title (usually most descriptive)
+                    if (d.title && d.title.length > siteData[d.site].title.length) {
+                        siteData[d.site].title = d.title;
+                    }
+                });
+
+                const sortedSites = Object.entries(siteData)
+                    .sort(([,a], [,b]) => b.time - a.time)
+                    .slice(0, 10);
+
+                // Store full data for tooltips
+                const chartData = sortedSites.map(([site, data]) => ({
+                    site,
+                    title: data.title,
+                    time: data.time,
+                    // Display: use truncated title if available, else truncated URL
+                    label: data.title
+                        ? (data.title.length > 40 ? data.title.slice(0, 40) + '...' : data.title)
+                        : (site.length > 40 ? site.slice(0, 40) + '...' : site)
+                }));
+
+                this.charts.topSites = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.map(d => d.label),
+                        datasets: [{
+                            label: `Time (${this.getTimeUnit()})`,
+                            data: chartData.map(d => this.formatTime(d.time)),
+                            backgroundColor: '#3498db',
+                            borderColor: '#2980b9',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: (context) => {
+                                        const d = chartData[context[0].dataIndex];
+                                        return d.title || d.site;
+                                    },
+                                    afterTitle: (context) => {
+                                        const d = chartData[context[0].dataIndex];
+                                        return d.title ? d.site : '';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+
+            createCategoryChart() {
+                const ctx = document.getElementById('categoryChart').getContext('2d');
+
+                if (this.charts.category) {
+                    this.charts.category.destroy();
+                }
+
+                const categoryTime = {};
+                this.filteredData.forEach(d => {
+                    const category = this.categorizesite(d.site);
+                    categoryTime[category] = (categoryTime[category] || 0) + d.timeSeconds;
+                });
+
+                const colors = {
+                    social: '#e74c3c',
+                    development: '#27ae60',
+                    trading: '#f39c12',
+                    ai: '#9b59b6',
+                    news: '#34495e',
+                    cloudflare: '#f39200',
+                    other: '#95a5a6'
+                };
+
+                const totalTime = Object.values(categoryTime).reduce((sum, time) => sum + time, 0);
+
+                this.charts.category = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(categoryTime).map(cat =>
+                            cat.charAt(0).toUpperCase() + cat.slice(1)
+                        ),
+                        datasets: [{
+                            data: Object.values(categoryTime).map(time => this.formatTime(time)),
+                            backgroundColor: Object.keys(categoryTime).map(cat => colors[cat]),
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        const categoryName = context.label;
+                                        const timeValue = Object.values(categoryTime)[context.dataIndex];
+                                        const percentage = ((timeValue / totalTime) * 100).toFixed(1);
+                                        const formattedTime = this.formatTime(timeValue);
+                                        return `${categoryName}: ${formattedTime}${this.getTimeUnit()} (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            createTimelineChart() {
+                const ctx = document.getElementById('timelineChart').getContext('2d');
+
+                if (this.charts.timeline) {
+                    this.charts.timeline.destroy();
+                }
+
+                const dailyTime = {};
+                this.filteredData.forEach(d => {
+                    dailyTime[d.date] = (dailyTime[d.date] || 0) + d.timeSeconds;
+                });
+
+                const sortedDates = Object.keys(dailyTime).sort();
+
+                this.charts.timeline = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: sortedDates,
+                        datasets: [{
+                            label: `Daily Time (${this.getTimeUnit()})`,
+                            data: sortedDates.map(date => this.formatTime(dailyTime[date])),
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+
+            createHeatmapChart() {
+                const ctx = document.getElementById('heatmapChart').getContext('2d');
+
+                if (this.charts.heatmap) {
+                    this.charts.heatmap.destroy();
+                }
+
+                const dailyTime = {};
+                this.filteredData.forEach(d => {
+                    dailyTime[d.date] = (dailyTime[d.date] || 0) + d.timeSeconds;
+                });
+
+                const dates = Object.keys(dailyTime).sort();
+                const maxTime = Math.max(...Object.values(dailyTime));
+
+                this.charts.heatmap = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: dates,
+                        datasets: [{
+                            label: `Time (${this.getTimeUnit()})`,
+                            data: dates.map(date => this.formatTime(dailyTime[date])),
+                            backgroundColor: dates.map(date => {
+                                const intensity = dailyTime[date] / maxTime;
+                                return `rgba(52, 152, 219, ${0.3 + intensity * 0.7})`;
+                            }),
+                            borderColor: '#3498db',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+
+            createSitesOverTimeChart() {
+                const ctx = document.getElementById('sitesOverTimeChart').getContext('2d');
+
+                if (this.charts.sitesOverTime) {
+                    this.charts.sitesOverTime.destroy();
+                }
+
+                // Get top 5 sites by total time, with titles
+                const siteData = {};
+                this.filteredData.forEach(d => {
+                    if (!siteData[d.site]) {
+                        siteData[d.site] = { time: 0, title: '' };
+                    }
+                    siteData[d.site].time += d.timeSeconds;
+                    if (d.title && d.title.length > siteData[d.site].title.length) {
+                        siteData[d.site].title = d.title;
+                    }
+                });
+
+                const topSites = Object.entries(siteData)
+                    .sort(([,a], [,b]) => b.time - a.time)
+                    .slice(0, 5)
+                    .map(([site, data]) => ({ site, title: data.title }));
+
+                // Get daily data for these sites
+                const dates = [...new Set(this.filteredData.map(d => d.date))].sort();
+                const colors = ['#e74c3c', '#3498db', '#27ae60', '#f39c12', '#9b59b6'];
+
+                const datasets = topSites.map((item, index) => {
+                    const dailyData = {};
+                    this.filteredData.filter(d => d.site === item.site).forEach(d => {
+                        dailyData[d.date] = (dailyData[d.date] || 0) + d.timeSeconds;
+                    });
+
+                    // Use title for legend if available, truncated
+                    const label = item.title
+                        ? (item.title.length > 30 ? item.title.slice(0, 30) + '...' : item.title)
+                        : (item.site.length > 30 ? item.site.slice(0, 30) + '...' : item.site);
+
+                    return {
+                        label: label,
+                        data: dates.map(date => this.formatTime(dailyData[date] || 0)),
+                        borderColor: colors[index],
+                        backgroundColor: colors[index] + '20',
+                        tension: 0.4,
+                        fill: false
+                    };
+                });
+
+                this.charts.sitesOverTime = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: dates,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+
+            showLoading() {
+                document.querySelector('.loading').style.display = 'block';
+                document.querySelector('.no-data').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'none';
+            }
+
+            showNoData() {
+                document.querySelector('.loading').style.display = 'none';
+                document.querySelector('.no-data').style.display = 'block';
+                document.getElementById('dashboard').style.display = 'none';
+            }
+
+            showDashboard() {
+                document.querySelector('.loading').style.display = 'none';
+                document.querySelector('.no-data').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+            }
+        }
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new TimeTrackerDashboard();
+        });
+    </script>
+</body>
+</html>
