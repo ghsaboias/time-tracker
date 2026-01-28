@@ -65,8 +65,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Filter and display sites based on search
   function filterSites(searchTerm) {
     const filteredSites = searchTerm
-      ? currentSites.filter(([site]) =>
-          site.toLowerCase().includes(searchTerm.toLowerCase())
+      ? currentSites.filter(([url, time, title]) =>
+          url.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          title.toLowerCase().includes(searchTerm.toLowerCase())
         )
       : currentSites;
 
@@ -85,15 +86,17 @@ document.addEventListener("DOMContentLoaded", () => {
         : "No data for this date";
       siteList.appendChild(emptyMessage);
     } else {
-      sites.forEach(([site, time]) => {
+      sites.forEach(([url, time, title]) => {
         const li = document.createElement("li");
         const minutes = Math.floor(time / 60);
         const seconds = Math.round(time % 60);
         const timeText =
           minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
+        // Show title if available, otherwise show URL
+        const displayText = title || url;
         li.innerHTML = `
-          <span class="site-name">${site}</span>
+          <span class="site-name" title="${url}">${displayText}</span>
           <span class="time-spent">${timeText}</span>
         `;
         siteList.appendChild(li);
@@ -108,8 +111,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const selectedDate = dateSelect.value;
       const data = timeData[selectedDate] || {};
 
-      // Store current sites and sort them
-      currentSites = Object.entries(data).sort((a, b) => b[1] - a[1]);
+      // Store current sites and sort them, handling both old (number) and new ({time, title}) formats
+      currentSites = Object.entries(data)
+        .map(([url, value]) => {
+          if (typeof value === "number") {
+            return [url, value, ""]; // [url, time, title]
+          }
+          return [url, value.time, value.title || ""];
+        })
+        .sort((a, b) => b[1] - a[1]);
 
       // Apply current search filter
       filterSites(searchInput.value);
@@ -120,19 +130,25 @@ document.addEventListener("DOMContentLoaded", () => {
   exportBtn.addEventListener("click", () => {
     chrome.storage.local.get(["timeData"], (result) => {
       const timeData = result.timeData || {};
-      let csv = "Date,Site,Time (seconds)\n";
+      let csv = "Date,URL,Title,Time (seconds)\n";
       for (const [date, sites] of Object.entries(timeData)) {
-        for (const [site, time] of Object.entries(sites)) {
-          csv += `${date},${site},${Math.round(time)}\n`;
+        for (const [url, value] of Object.entries(sites)) {
+          // Handle both old (number) and new ({time, title}) formats
+          const time = typeof value === "number" ? value : value.time;
+          const title = typeof value === "number" ? "" : (value.title || "");
+          // Escape quotes in title and URL for CSV
+          const escapedUrl = url.includes(",") ? `"${url.replace(/"/g, '""')}"` : url;
+          const escapedTitle = title.includes(",") || title.includes('"') ? `"${title.replace(/"/g, '""')}"` : title;
+          csv += `${date},${escapedUrl},${escapedTitle},${Math.round(time)}\n`;
         }
       }
       const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = blobUrl;
       a.download = `time_tracker_${new Date().toISOString().split("T")[0]}.csv`;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
     });
   });
 

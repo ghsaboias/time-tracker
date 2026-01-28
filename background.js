@@ -128,12 +128,18 @@ async function updateTime() {
         return;
       }
       if (tab && tab.url) {
-        const hostname = new URL(tab.url).hostname;
+        const fullUrl = tab.url;
+        const title = tab.title || "";
         const today = new Date().toISOString().split("T")[0];
 
         if (!timeData[today]) timeData[today] = {};
-        if (!timeData[today][hostname]) timeData[today][hostname] = 0;
-        timeData[today][hostname] += timeSpent;
+        if (!timeData[today][fullUrl]) timeData[today][fullUrl] = { time: 0, title: "" };
+        // Handle legacy data (plain numbers)
+        if (typeof timeData[today][fullUrl] === "number") {
+          timeData[today][fullUrl] = { time: timeData[today][fullUrl], title: "" };
+        }
+        timeData[today][fullUrl].time += timeSpent;
+        timeData[today][fullUrl].title = title; // Update to latest title
 
         // Save to storage
         chrome.storage.local.set({ timeData }, () => {
@@ -141,7 +147,7 @@ async function updateTime() {
             console.error("Error saving data:", chrome.runtime.lastError);
           } else {
             console.log(
-              `Saved time for ${hostname}: ${timeSpent}s (Total: ${timeData[today][hostname]}s)`
+              `Saved time for ${fullUrl} ("${title}"): ${timeSpent}s (Total: ${timeData[today][fullUrl].time}s)`
             );
           }
         });
