@@ -1,78 +1,63 @@
-# ADHD Time Tracker Chrome Extension
+# Time Tracker
 
-A Chrome extension designed to help users with ADHD track and manage their time spent on different websites. The extension runs in the background and automatically tracks active tab usage, providing insights into browsing patterns.
+Browser extension that tracks time spent on URLs. Captures full URLs and page titles.
 
-## Technical Overview
+## Install
 
-- **Manifest Version**: 3
-- **Chrome APIs Used**:
-  - `tabs`
-  - `storage`
-  - `activeTab`
-
-## Features
-
-- Real-time website tracking
-- Per-domain time tracking
-- Daily usage statistics
-- Background tracking with browser focus awareness
-- Persistent storage of tracking data
-
-## Architecture
-
-### Background Service Worker (`background.js`)
-
-- Implements core tracking logic
-- Handles tab activation and focus events
-- Manages time calculations and storage updates
-- Updates tracking data every second
-
-### Popup Interface (`popup.html`, `popup.js`)
-
-- Provides user interface for viewing statistics
-- Displays tracked time data
-- Implements data visualization
-
-## Installation
-
-1. Clone this repository
-2. Open Chrome and navigate to `chrome://extensions/`
+1. Clone repo
+2. Go to `chrome://extensions/` (or `brave://extensions/`)
 3. Enable "Developer mode"
-4. Click "Load unpacked" and select the extension directory
+4. "Load unpacked" → select this directory
 
-## Technical Details
+## Usage
 
-### Storage Format
+Extension runs in background. Click popup to view stats. Export to CSV.
 
-Time data is stored in Chrome's local storage using the following structure:
+### CSV Export
+
+Format: `Date,URL,Title,Time (seconds)`
+
+```
+2026-01-28,https://github.com/user/repo/issues/57,"Fix bug · Issue #57",45
+2026-01-28,https://www.youtube.com/watch?v=abc123,"Video Title - YouTube",120
+```
+
+### Dashboard
+
+Open `time-tracker-dashboard.html` in browser. Drag & drop exported CSV for visualizations.
+
+## Storage Format
 
 ```javascript
 {
-  "YYYY-MM-DD": {
-    "domain.com": timeInSeconds,
-    // ... other domains
+  "2026-01-28": {
+    "https://github.com/user/repo": {
+      "time": 120,
+      "title": "user/repo - GitHub"
+    }
   }
-  // ... other dates
 }
 ```
 
-### Event Handling
+Legacy format (hostname only, no title) still supported for migration.
 
-- `tabs.onActivated`: Tracks tab switches
-- `tabs.onUpdated`: Monitors URL changes
-- `windows.onFocusChanged`: Handles browser focus state
+## Files
 
-### Performance Considerations
+- `background.js` - Tracking logic, runs every 1s
+- `popup.js` - UI, search, export
+- `time-tracker-dashboard.html` - Standalone viz tool (Chart.js)
 
-- Uses efficient time tracking with second precision
-- Implements error handling for tab access
-- Maintains data persistence across browser sessions
+## Config
 
-## Dependencies
+- **Retention**: Default 30 days, configurable in popup
+- **Storage quota**: 5MB limit, auto-cleanup when near
 
-No external dependencies required. The extension uses native Chrome Extension APIs.
+## APIs
 
-## Browser Compatibility
+Chrome Extension Manifest V3: `tabs`, `storage`, `activeTab`
 
-- Chrome/Chromium-based browsers
-- Manifest V3 compatible
+## Events
+
+- `tabs.onActivated` - Tab switch
+- `tabs.onUpdated` - URL change
+- `windows.onFocusChanged` - Browser focus/blur
