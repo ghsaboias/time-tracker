@@ -72,5 +72,13 @@ if (shouldTrack()) {
   startVisit();
 }
 
+// Periodic checkpoint every 30s (saves progress, restarts tracking)
+setInterval(() => {
+  if (visitStart && shouldTrack()) {
+    endVisit();
+    startVisit();
+  }
+}, 30000);
+
 // End visit on page unload
 window.addEventListener('beforeunload', endVisit);
