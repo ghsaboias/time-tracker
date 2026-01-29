@@ -1,12 +1,19 @@
+// Prevent duplicate injection
+if (window.__timeTrackerInjected) throw new Error('Already injected');
+window.__timeTrackerInjected = true;
+
 // Self-contained tracking - no service worker dependency
 let visitStart = null;
-let activeMediaStart = null;
-let activeMediaType = null;
+let windowFocused = document.hasFocus();
 
 const pageUrl = window.location.href;
 const getTitle = () => document.title || pageUrl;
 
 // === VISIT TRACKING ===
+
+function shouldTrack() {
+  return document.visibilityState === 'visible' && windowFocused;
+}
 
 function startVisit() {
   if (visitStart) return; // Already tracking
@@ -38,93 +45,32 @@ function endVisit() {
   });
 }
 
-// Track visibility changes (handles tab switches, window blur, etc.)
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
+function updateTracking() {
+  if (shouldTrack()) {
     startVisit();
   } else {
     endVisit();
   }
+}
+
+// Track visibility changes (tab switches, minimize)
+document.addEventListener('visibilitychange', updateTracking);
+
+// Track window focus (switching to other apps)
+window.addEventListener('focus', () => {
+  windowFocused = true;
+  updateTracking();
 });
 
-// Start tracking if page is already visible
-if (document.visibilityState === 'visible') {
+window.addEventListener('blur', () => {
+  windowFocused = false;
+  updateTracking();
+});
+
+// Start tracking if conditions met
+if (shouldTrack()) {
   startVisit();
 }
 
 // End visit on page unload
 window.addEventListener('beforeunload', endVisit);
-
-// === MEDIA TRACKING ===
-
-const trackedMedia = new WeakSet();
-
-function startMediaSession(element) {
-  if (activeMediaStart) return; // Already tracking media
-  activeMediaStart = Date.now();
-  activeMediaType = element.tagName.toLowerCase();
-}
-
-function endMediaSession() {
-  if (!activeMediaStart) return;
-
-  const duration = (Date.now() - activeMediaStart) / 1000;
-  const start = activeMediaStart;
-  activeMediaStart = null;
-
-  if (duration < 2) return; // Ignore < 2s sessions
-
-  const session = {
-    url: pageUrl,
-    title: getTitle(),
-    start: start,
-    end: Date.now(),
-    mediaType: activeMediaType
-  };
-  activeMediaType = null;
-
-  chrome.storage.local.get(['mediaSessions'], (result) => {
-    const mediaSessions = result.mediaSessions || [];
-    mediaSessions.push(session);
-    chrome.storage.local.set({ mediaSessions });
-  });
-}
-
-function attachMediaListeners(element) {
-  if (trackedMedia.has(element)) return;
-  trackedMedia.add(element);
-
-  if (!element.paused) {
-    startMediaSession(element);
-  }
-
-  element.addEventListener('play', () => startMediaSession(element));
-  element.addEventListener('pause', endMediaSession);
-  element.addEventListener('ended', endMediaSession);
-}
-
-function findAndTrackMedia() {
-  document.querySelectorAll('video, audio').forEach(attachMediaListeners);
-}
-
-// Initial scan
-findAndTrackMedia();
-
-// Watch for dynamically added media
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    for (const node of mutation.addedNodes) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (node.tagName === 'VIDEO' || node.tagName === 'AUDIO') {
-          attachMediaListeners(node);
-        }
-        node.querySelectorAll?.('video, audio').forEach(attachMediaListeners);
-      }
-    }
-  }
-});
-
-observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-
-// End media on page unload
-window.addEventListener('beforeunload', endMediaSession);

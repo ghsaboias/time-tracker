@@ -4,14 +4,34 @@
 let MAX_DAYS_TO_KEEP = 30;
 
 // Setup alarm on install/startup
-chrome.runtime.onInstalled.addListener(setupAlarm);
-chrome.runtime.onStartup.addListener(setupAlarm);
+chrome.runtime.onInstalled.addListener(onStartup);
+chrome.runtime.onStartup.addListener(onStartup);
+
+function onStartup() {
+  setupAlarm();
+  injectIntoExistingTabs();
+}
 
 function setupAlarm() {
   chrome.alarms.create('autoExport', { periodInMinutes: 60 });
   chrome.storage.local.get(['retentionDays'], (result) => {
     if (result.retentionDays) MAX_DAYS_TO_KEEP = result.retentionDays;
     cleanupOldData();
+  });
+}
+
+function injectIntoExistingTabs() {
+  chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs) {
+      // Skip chrome:// and other restricted URLs
+      if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        continue;
+      }
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content.js']
+      }).catch(() => {}); // Ignore errors for restricted pages
+    }
   });
 }
 
@@ -37,32 +57,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 function cleanupOldData() {
   const cutoff = Date.now() - (MAX_DAYS_TO_KEEP * 24 * 60 * 60 * 1000);
-  chrome.storage.local.get(['visits', 'mediaSessions'], (result) => {
+  chrome.storage.local.get(['visits'], (result) => {
     const visits = (result.visits || []).filter(v => v.start >= cutoff);
-    const mediaSessions = (result.mediaSessions || []).filter(m => m.start >= cutoff);
-    chrome.storage.local.set({ visits, mediaSessions });
+    chrome.storage.local.set({ visits });
   });
 }
 
 function autoExportCSV() {
-  chrome.storage.local.get(['visits', 'mediaSessions'], (result) => {
+  chrome.storage.local.get(['visits'], (result) => {
     const visits = result.visits || [];
-    const mediaSessions = result.mediaSessions || [];
 
-    if (visits.length === 0 && mediaSessions.length === 0) return;
+    if (visits.length === 0) return;
 
-    let csv = 'Type,URL,Title,Start,End\n';
-    const allEvents = [
-      ...visits.map(v => ({ ...v, type: 'visit' })),
-      ...mediaSessions.map(m => ({ ...m, type: 'media' }))
-    ].sort((a, b) => a.start - b.start);
+    let csv = 'URL,Title,Start,End\n';
+    const sortedVisits = [...visits].sort((a, b) => a.start - b.start);
 
-    for (const e of allEvents) {
-      const url = e.url.includes(',') || e.url.includes('"')
-        ? `"${e.url.replace(/"/g, '""')}"` : e.url;
-      const title = (e.title || '').includes(',') || (e.title || '').includes('"')
-        ? `"${(e.title || '').replace(/"/g, '""')}"` : (e.title || '');
-      csv += `${e.type},${url},${title},${e.start},${e.end}\n`;
+    for (const v of sortedVisits) {
+      const url = v.url.includes(',') || v.url.includes('"')
+        ? `"${v.url.replace(/"/g, '""')}"` : v.url;
+      const title = (v.title || '').includes(',') || (v.title || '').includes('"')
+        ? `"${(v.title || '').replace(/"/g, '""')}"` : (v.title || '');
+      csv += `${url},${title},${v.start},${v.end}\n`;
     }
 
     const blob = new Blob([csv], { type: 'text/csv' });
