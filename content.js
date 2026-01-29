@@ -15,16 +15,16 @@ function shouldTrack() {
   return document.visibilityState === 'visible' && windowFocused;
 }
 
-function startVisit() {
+function startVisit(timestamp) {
   if (visitStart) return; // Already tracking
-  visitStart = Date.now();
+  visitStart = timestamp || Date.now();
 }
 
-function endVisit() {
+function endVisit(timestamp) {
   if (!visitStart) return;
 
   const start = visitStart;
-  const end = Date.now();
+  const end = timestamp || Date.now();
   const duration = (end - start) / 1000;
   visitStart = null;
 
@@ -75,8 +75,9 @@ if (shouldTrack()) {
 // Periodic checkpoint every 30s (saves progress, restarts tracking)
 setInterval(() => {
   if (visitStart && shouldTrack()) {
-    endVisit();
-    startVisit();
+    const now = Date.now();
+    endVisit(now);
+    startVisit(now);
   }
 }, 30000);
 
