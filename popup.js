@@ -1,4 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // Ensure export alarm exists (survives service worker death)
+  chrome.alarms.create('autoExport', { periodInMinutes: 60 });
+
   const dateSelect = document.getElementById("dateSelect");
   const siteList = document.getElementById("siteList");
   const exportBtn = document.getElementById("exportBtn");
