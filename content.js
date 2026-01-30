@@ -82,4 +82,4 @@ setInterval(() => {
 }, 30000);
 
 // End visit on page unload
-window.addEventListener('beforeunload', endVisit);
+window.addEventListener('beforeunload', () => endVisit());

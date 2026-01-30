@@ -128,6 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Aggregate visits by URL
       const aggregated = {};
       dayVisits.forEach(v => {
+        if (typeof v.end !== 'number' || typeof v.start !== 'number') return; // Skip invalid visits
         const duration = (v.end - v.start) / 1000;
         if (!aggregated[v.url]) {
           aggregated[v.url] = { time: 0, title: v.title };
