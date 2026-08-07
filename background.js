@@ -80,15 +80,89 @@ function autoExportCSV() {
       csv += `${url},${title},${v.start},${v.end}\n`;
     }
 
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const reader = new FileReader();
-    reader.onload = () => {
-      chrome.downloads.download({
-        url: reader.result,
-        filename: `time_tracker_${new Date().toISOString().split('T')[0]}.csv`,
-        conflictAction: 'overwrite'
-      });
+    const filename = `time_tracker_${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(csv, filename).catch((err) => {
+      console.error('[time-tracker] auto export failed:', err);
+    });
+  });
+}
+
+// --- CSV delivery -----------------------------------------------------------
+// Never go back to FileReader/readAsDataURL here. That inlines the whole CSV as
+// base64 in the download URL, and Chromium persists every download record --
+// URL included -- in Default/shared_proto_db. At 24 exports/day of a multi-MB
+// CSV that DB reached 1.5GB and OOM-crashed the browser process at startup.
+// An offscreen document gives us URL.createObjectURL (unavailable in MV3
+// service workers), so the stored record is a 93-byte blob: URL instead.
+
+let offscreenPending = null;
+
+async function ensureOffscreenDocument() {
+  if (await chrome.offscreen.hasDocument()) return;
+  if (!offscreenPending) {
+    offscreenPending = chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['BLOBS'],
+      justification: 'Create a blob URL for the hourly CSV export.'
+    }).finally(() => { offscreenPending = null; });
+  }
+  await offscreenPending;
+}
+
+async function downloadCSV(csv, filename) {
+  await ensureOffscreenDocument();
+
+  const response = await chrome.runtime.sendMessage({
+    target: 'offscreen',
+    type: 'csv-to-blob-url',
+    csv
+  });
+  if (!response || !response.url) {
+    throw new Error('offscreen document returned no blob URL');
+  }
+  const url = response.url;
+
+  try {
+    const downloadId = await chrome.downloads.download({
+      url,
+      filename,
+      conflictAction: 'overwrite'
+    });
+    // Hold the blob URL alive until the write finishes; revoking early can
+    // interrupt the download, and closing the document revokes it implicitly.
+    await waitForDownload(downloadId);
+  } finally {
+    await chrome.runtime
+      .sendMessage({ target: 'offscreen', type: 'revoke-blob-url', url })
+      .catch(() => {});
+    if (await chrome.offscreen.hasDocument()) {
+      await chrome.offscreen.closeDocument();
+    }
+  }
+}
+
+function waitForDownload(downloadId, timeoutMs = 60000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (state) => {
+      if (settled) return;
+      settled = true;
+      chrome.downloads.onChanged.removeListener(onChanged);
+      clearTimeout(timer);
+      resolve(state);
     };
-    reader.readAsDataURL(blob);
+    const onChanged = (delta) => {
+      if (delta.id !== downloadId || !delta.state) return;
+      if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
+        finish(delta.state.current);
+      }
+    };
+    const timer = setTimeout(() => finish('timeout'), timeoutMs);
+    chrome.downloads.onChanged.addListener(onChanged);
+    // The download can finish before the listener attaches.
+    chrome.downloads.search({ id: downloadId }, (items) => {
+      const state = items && items[0] && items[0].state;
+      if (state === 'complete' || state === 'interrupted') finish(state);
+    });
   });
 }
