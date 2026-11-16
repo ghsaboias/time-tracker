@@ -80,7 +80,7 @@ function autoExportCSV() {
       csv += `${url},${title},${v.start},${v.end}\n`;
     }
 
-    const filename = `time_tracker_${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = 'time_tracker_latest.csv';
     downloadCSV(csv, filename).catch((err) => {
       console.error('[time-tracker] auto export failed:', err);
     });

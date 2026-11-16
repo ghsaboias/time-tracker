@@ -30,16 +30,19 @@ format, and tracking semantics. Keep it updated when you change either.
 
 ## Downstream consumers
 
-Exports land in `~/Downloads/time_tracker_YYYY-MM-DD.csv` and are rsynced hourly
-to `pi:~/browser-activity/` by `~/bin/sync_browser_activity.sh` (cron at :30).
-Changing the CSV header or column order breaks anything on the Pi that parses
-those files.
+Exports overwrite `~/Downloads/time_tracker_latest.csv`. Hourly,
+`~/bin/sync_browser_activity.sh` (cron at :30) appends its new rows to
+`~/Documents/browser-activity/time_tracker_archive.csv` via
+`tools/append_archive.py` and rsyncs the archive to `pi:~/browser-activity/`.
+Changing the CSV header or column order breaks `append_archive.py`, which
+refuses unknown headers. Don't go back to dated filenames: one 30-day snapshot
+per day is what grew `~/Downloads` to 1.1 GB of repeated rows.
 
 - **The sync log is `/tmp/browser-activity-sync.log`**, written by the script
   itself. The crontab also redirects to `/tmp/sync-browser.log`, but that file
   stays 0 bytes because the script redirects everything internally — don't debug
   against it.
-- **The CSVs are the only archive past 30 days.** `MAX_DAYS_TO_KEEP = 30` prunes
-  `chrome.storage`, and the popup and dashboard both read from storage, not the
-  CSVs. Nothing on the Pi consumes `~/browser-activity` — it is purely the
+- **The archive CSV is the only record past 30 days.** `MAX_DAYS_TO_KEEP = 30`
+  prunes `chrome.storage`, and the popup and dashboard both read from storage,
+  not the CSVs. If the cron stops for more than 30 days, rows are lost. Nothing on the Pi consumes `~/browser-activity` — it is purely the
   offsite copy. Don't prune it as "cache".
